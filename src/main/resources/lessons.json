@@ -42,11 +42,13 @@
     "tests": [
       {
         "input": "2",
-        "expected": "Binary: 10\nOctal: 2\nHex: 2\nHex float reciprocal: 0x1.0p-1"
+        "expected": "",
+        "mode": "NUMBER_SYSTEMS"
       },
       {
         "input": "8",
-        "expected": "Binary: 1000\nOctal: 10\nHex: 8\nHex float reciprocal: 0x1.0p-3"
+        "expected": "",
+        "mode": "NUMBER_SYSTEMS"
       }
     ]
   }

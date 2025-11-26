@@ -3,6 +3,7 @@ package com.example.demo.service;
 import com.example.demo.model.CodeExecutionResult;
 import com.example.demo.model.TestCase;
 import com.example.demo.model.TestResult;
+import com.example.demo.model.TestMode;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedWriter;
@@ -11,10 +12,14 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -69,19 +74,7 @@ public class CodeExecutionService {
                     continue;
                 }
 
-                String actual = normalize(runOutcome.output());
-                String expected = safeString(testCase.getExpected());
-                String normalizedExpected = normalize(expected);
-                boolean requiresMatch = !expected.isEmpty();
-                boolean passed = requiresMatch ? actual.equals(normalizedExpected) : true;
-
-                results.add(new TestResult(
-                        safeString(testCase.getInput()),
-                        expected,
-                        actual,
-                        passed,
-                        passed ? "" : "Вывод не совпадает"
-                ));
+                results.add(evaluateTestCase(testCase, runOutcome.output()));
             }
 
             boolean allPassed = results.stream().allMatch(TestResult::isPassed);
@@ -95,6 +88,111 @@ public class CodeExecutionService {
         } finally {
             cleanupDirectory(tempDir);
         }
+    }
+
+    private TestResult evaluateTestCase(TestCase testCase, String rawOutput) {
+        String actual = normalize(rawOutput);
+        String expected = safeString(testCase.getExpected());
+        TestMode mode = TestMode.from(testCase.getMode());
+
+        return switch (mode) {
+            case NUMBER_SYSTEMS -> evaluateNumberSystems(testCase, actual);
+            case EXACT -> {
+                String normalizedExpected = normalize(expected);
+                boolean requiresMatch = !expected.isEmpty();
+                boolean passed = requiresMatch ? actual.equals(normalizedExpected) : true;
+                yield new TestResult(
+                        safeString(testCase.getInput()),
+                        expected.isEmpty() ? "<любой вывод>" : expected,
+                        actual,
+                        passed,
+                        passed ? "" : "Вывод не совпадает"
+                );
+            }
+        };
+    }
+
+    private TestResult evaluateNumberSystems(TestCase testCase, String actualOutput) {
+        String input = safeString(testCase.getInput()).trim();
+        int value;
+        try {
+            value = Integer.parseInt(input.split("\\s+")[0]);
+        } catch (NumberFormatException e) {
+            return new TestResult(input, "", actualOutput, false, "Не удалось разобрать входное значение", "");
+        }
+
+        Map<String, String> expectedMap = new HashMap<>();
+        expectedMap.put("binary", Integer.toBinaryString(value));
+        expectedMap.put("octal", Integer.toOctalString(value));
+        expectedMap.put("hex", Integer.toHexString(value).toUpperCase(Locale.ROOT));
+        expectedMap.put("reciprocal", value == 0 ? "Infinity" : Double.toHexString(1.0 / value));
+
+        Map<String, String> actualMap = parseNumberSystemOutput(actualOutput);
+
+        StringBuilder details = new StringBuilder();
+        boolean success = true;
+        for (Map.Entry<String, String> entry : expectedMap.entrySet()) {
+            String key = entry.getKey();
+            String actual = actualMap.get(key);
+            if (actual == null) {
+                success = false;
+                details.append(MessageFormat.format("Не найдена строка для {0}. ", key));
+                continue;
+            }
+            String expectedValue = entry.getValue();
+            if (key.equals("hex")) {
+                actual = actual.toUpperCase(Locale.ROOT);
+            }
+            if (!expectedValue.equals(actual)) {
+                success = false;
+                details.append(MessageFormat.format("Ожидалось {0}={1}, получено {2}. ", key, expectedValue, actual));
+            }
+        }
+
+        String expectedDisplay = String.format(
+                Locale.ROOT,
+                "Binary: %s%nOctal: %s%nHex: %s%nHex float reciprocal: %s",
+                expectedMap.get("binary"),
+                expectedMap.get("octal"),
+                expectedMap.get("hex"),
+                expectedMap.get("reciprocal")
+        );
+
+        if (success) {
+            return new TestResult(input, expectedDisplay, actualOutput, true, "", details.toString());
+        }
+        return new TestResult(input, expectedDisplay, actualOutput, false, "Значения не совпадают", details.toString());
+    }
+
+    private Map<String, String> parseNumberSystemOutput(String output) {
+        Map<String, String> map = new HashMap<>();
+        String[] lines = output.split("\\r?\\n");
+        for (String line : lines) {
+            String normalized = line.trim();
+            if (normalized.isEmpty()) {
+                continue;
+            }
+            String lower = normalized.toLowerCase(Locale.ROOT);
+            if (lower.contains("binary") || lower.contains("двоич")) {
+                map.put("binary", extractValue(normalized));
+            } else if (lower.contains("octal") || lower.contains("восьмер")) {
+                map.put("octal", extractValue(normalized));
+            } else if ((lower.contains("hex float reciprocal")) || lower.contains("обратн")) {
+                map.put("reciprocal", extractValue(normalized));
+            } else if (lower.contains("hex") || lower.contains("шестнадц")) {
+                map.put("hex", extractValue(normalized));
+            }
+        }
+        return map;
+    }
+
+    private String extractValue(String line) {
+        int idx = line.indexOf(':');
+        if (idx >= 0 && idx + 1 < line.length()) {
+            return line.substring(idx + 1).trim();
+        }
+        String[] tokens = line.split("\\s+");
+        return tokens.length == 0 ? "" : tokens[tokens.length - 1];
     }
 
     private List<TestCase> selectTests(List<TestCase> tests, String fallbackExpected) {
