@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Learn App</title>
+</head>
+<body>
+<h1>Учебные уроки</h1>
+<div th:each="lesson : ${lessons}">
+    <h3><a th:href="@{/lesson/{id}(id=${lesson.id})}"
+           th:text="${lesson.title}">Название урока</a></h3>
+    <p th:text="${lesson.description}">Описание</p>
+</div>
+</body>
+</html>

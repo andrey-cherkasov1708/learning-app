@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Урок</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f5f6fb;
+            margin: 0;
+            padding: 0;
+        }
+        .correct { color: #0f9d58; font-weight: 600; }
+        .wrong { color: #c62828; font-weight: 600; }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 30px 20px 60px;
+        }
+        .editor-shell {
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            overflow: hidden;
+            min-height: 320px;
+            background: #1e1e1e;
+        }
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin: 15px 0;
+        }
+        .toolbar button {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .results-table th,
+        .results-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            vertical-align: top;
+        }
+        .results-table pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .test-pass {
+            color: green;
+        }
+        .test-fail {
+            color: red;
+        }
+        .error {
+            color: #b71c1c;
+            font-size: 0.9em;
+            margin-top: 4px;
+        }
+        button, select {
+            background: #007cba;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #005a87;
+        }
+        select {
+            padding: 8px 16px;
+        }
+        .status-chip {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-chip.running {
+            background: #fff3cd;
+            color: #8a6d3b;
+        }
+        .status-chip.done {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-chip.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .io-block {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 12px;
+            white-space: pre-wrap;
+            font-family: 'Consolas', monospace;
+            font-size: 0.95em;
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+<div class="container">
+    <h2>Теория:</h2>
+    <pre><code class="language-java" th:text="${theory}"></code></pre>
+
+    <h2>Задание:</h2>
+    <p th:text="${task}"></p>
+
+    <div class="toolbar">
+        <button id="runBtn" onclick="submitCode()"><i class="fa-solid fa-play"></i> Запустить</button>
+        <button onclick="formatCode()"><i class="fa-solid fa-wand-magic-sparkles"></i> Форматировать</button>
+        <button onclick="toggleTheme()"><i class="fa-solid fa-moon"></i> Тема</button>
+        <button onclick="changeFontSize(1)">A+</button>
+        <button onclick="changeFontSize(-1)">A-</button>
+        <span class="status-chip" id="statusChip" style="display:none;"></span>
+    </div>
+    <div id="editor" class="editor-shell"></div>
+
+    <div id="result" style="margin-top: 20px;"></div>
+
+    <br><br>
+    <a href="/">← Назад к списку уроков</a>
+</div>
+
+<script th:inline="javascript">
+    const lessonId = /*[[${lessonId}]]*/ 0;
+    let editor;
+    let currentTheme = 'vs-dark';
+    let pollingTimer = null;
+    const defaultCode = `public class Main {
+    public static void main(String[] args) {
+        // Ваш код здесь
+    }
+}`;
+
+    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+    require(['vs/editor/editor.main'], function () {
+        editor = monaco.editor.create(document.getElementById('editor'), {
+            value: defaultCode,
+            language: 'java',
+            theme: currentTheme,
+            automaticLayout: true,
+            fontSize: 15,
+            minimap: { enabled: false }
+        });
+        registerSnippets();
+    });
+
+    function registerSnippets() {
+        if (typeof monaco === 'undefined') {
+            return;
+        }
+        const suggestions = [
+            {
+                label: 'sout',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'System.out.println();',
+                insertText: 'System.out.println(${1});',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'serr',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'System.err.println();',
+                insertText: 'System.err.println(${1});',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'main',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'public static void main',
+                insertText: 'public static void main(String[] args) {\n    ${1}\n}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'psvm',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'public static void main',
+                insertText: 'public static void main(String[] args) {\n    ${1}\n}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'fore',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'foreach по коллекции',
+                insertText: 'for (${1:Type} ${2:item} : ${3:collection}) {\n    ${4}\n}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'fori',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'классический for',
+                insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:count}; ${1:i}++) {\n    ${3}\n}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'ifelse',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'if / else',
+                insertText: 'if (${1:condition}) {\n    ${2}\n} else {\n    ${3}\n}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'trycatch',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'try / catch',
+                insertText: 'try {\n    ${1}\n} catch (${2:Exception} ${3:e}) {\n    ${4}\n}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'list',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'ArrayList инициализация',
+                insertText: 'List<${1:Type}> ${2:list} = new ArrayList<>();',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            },
+            {
+                label: 'map',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                documentation: 'HashMap инициализация',
+                insertText: 'Map<${1:Key}, ${2:Value}> ${3:map} = new HashMap<>();',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            }
+        ];
+
+        monaco.languages.registerCompletionItemProvider('java', {
+            triggerCharacters: ['.', ' '],
+            provideCompletionItems: function () {
+                return { suggestions };
+            }
+        });
+    }
+
+    function setStatus(text, state) {
+        const chip = document.getElementById('statusChip');
+        chip.textContent = text;
+        chip.className = `status-chip ${state}`;
+        chip.style.display = 'inline-flex';
+    }
+
+    async function submitCode() {
+        if (!editor) return;
+        clearMarkers();
+        setStatus('В очереди...', 'running');
+        renderMessage('⏳ Отправляем решение...');
+
+        try {
+            const response = await fetch('/api/submissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lessonId,
+                    code: editor.getValue(),
+                    language: 'java'
+                })
+            });
+            if (!response.ok) throw new Error('Не удалось отправить решение');
+            const { submissionId } = await response.json();
+            pollSubmission(submissionId);
+        } catch (error) {
+            renderMessage(`Ошибка: ${escapeHtml(error.message)}`, 'wrong');
+            setStatus('Ошибка отправки', 'error');
+        }
+    }
+
+    function pollSubmission(id) {
+        clearInterval(pollingTimer);
+        pollingTimer = setInterval(async () => {
+            const response = await fetch(`/api/submissions/${id}`);
+            if (!response.ok) {
+                clearInterval(pollingTimer);
+                renderMessage('Не удалось получить результат', 'wrong');
+                setStatus('Ошибка', 'error');
+                return;
+            }
+            const submission = await response.json();
+            if (submission.status === 'COMPLETED') {
+                clearInterval(pollingTimer);
+                renderResult(submission.result);
+                applyDiagnostics(submission.result);
+                setStatus('Готово', 'done');
+            } else if (submission.status === 'FAILED') {
+                clearInterval(pollingTimer);
+                renderMessage(escapeHtml(submission.error || 'Выполнение завершилось с ошибкой'), 'wrong');
+                setStatus('Ошибка', 'error');
+            } else {
+                setStatus('Выполняется...', 'running');
+            }
+        }, 1000);
+    }
+
+    async function formatCode() {
+        if (!editor) return;
+        try {
+            const response = await fetch('/api/format', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: editor.getValue() })
+            });
+            if (!response.ok) throw new Error('Не удалось отформатировать код');
+            const data = await response.json();
+            editor.setValue(data.formattedCode);
+        } catch (error) {
+            renderMessage('Форматер: ' + escapeHtml(error.message), 'wrong');
+        }
+    }
+
+    function toggleTheme() {
+        if (typeof monaco === 'undefined') return;
+        currentTheme = currentTheme === 'vs-dark' ? 'vs' : 'vs-dark';
+        monaco.editor.setTheme(currentTheme);
+    }
+
+    function changeFontSize(delta) {
+        if (!editor || typeof monaco === 'undefined') return;
+        const currentSize = editor.getOption(monaco.editor.EditorOption.fontSize);
+        const next = Math.min(26, Math.max(12, currentSize + delta));
+        editor.updateOptions({ fontSize: next });
+    }
+
+    function renderResult(result) {
+        if (!result) {
+            renderMessage('Результат пуст', 'wrong');
+            return;
+        }
+        const resultDiv = document.getElementById('result');
+        const statusClass = result.correct ? 'correct' : 'wrong';
+        const message = escapeHtml(result.message || (result.correct ? 'Все тесты пройдены' : 'Есть ошибки в тестах'));
+        let html = `<p class="${statusClass}">${result.correct ? '✅' : '❌'} ${message}</p>`;
+
+        if (Array.isArray(result.tests) && result.tests.length) {
+            const rows = result.tests.map((test, index) => {
+                const rowClass = test.passed ? 'test-pass' : 'test-fail';
+                const errorBlock = test.error
+                    ? `<div class="error">${escapeHtml(test.error)}</div>`
+                    : '';
+
+                return `
+                    <tr class="${rowClass}">
+                        <td>${index + 1}</td>
+                        <td><pre>${escapeHtml(test.input || '(пусто)')}</pre></td>
+                        <td><pre>${escapeHtml(test.expected || '(пусто)')}</pre></td>
+                        <td>
+                            <pre>${escapeHtml(test.output || '')}</pre>
+                            ${errorBlock}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            html += `
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Ввод</th>
+                            <th>Ожидалось</th>
+                            <th>Фактический вывод</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        resultDiv.innerHTML = html;
+    }
+
+    function renderMessage(text, css = '') {
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = `<p class="${css}">${text}</p>`;
+    }
+
+    function clearMarkers() {
+        if (!editor || typeof monaco === 'undefined') return;
+        monaco.editor.setModelMarkers(editor.getModel(), 'submission', []);
+    }
+
+    function applyDiagnostics(result) {
+        if (!editor || typeof monaco === 'undefined' || !result || !Array.isArray(result.tests)) {
+            clearMarkers();
+            return;
+        }
+        const markers = [];
+        result.tests.forEach(test => {
+            if (test.error) {
+                const matches = test.error.match(/Main\.java:(\d+):/);
+                if (matches && matches[1]) {
+                    const line = Number(matches[1]);
+                    markers.push({
+                        severity: monaco.MarkerSeverity.Error,
+                        startLineNumber: line,
+                        startColumn: 1,
+                        endLineNumber: line,
+                        endColumn: 120,
+                        message: test.error
+                    });
+                }
+            }
+        });
+        monaco.editor.setModelMarkers(editor.getModel(), 'submission', markers);
+    }
+
+    function escapeHtml(text) {
+        return (text || '')
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+</script>
+</body>
+</html>
+</html>

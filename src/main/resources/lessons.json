@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1,
+    "title": "Введение в Java",
+    "description": "Первый урок по основам Java",
+    "theory": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\\\"Hello World!\\\");\n    }\n}",
+    "task": "Напишите программу которая выводит 'Hello Java!'",
+    "solution": "Hello Java!",
+    "tests": [
+      { "input": "", "expected": "Hello Java!" }
+    ]
+  },
+  {
+    "id": 2,
+    "title": "Переменные и типы данных",
+    "description": "Изучаем переменные и основные типы данных",
+    "theory": "int number = 10;\ndouble price = 99.99;\nString name = \\\"Java\\\";\nboolean isActive = true;",
+    "task": "Создайте программу которая объявляет переменную age = 25 и выводит её",
+    "solution": "25",
+    "tests": [
+      { "input": "", "expected": "25" }
+    ]
+  },
+  {
+    "id": 3,
+    "title": "Цикл for",
+    "description": "Изучаем циклы for",
+    "theory": "for (int i = 0; i < 5; i++) {\n    System.out.println(\\\"Count: \\\" + i);\n}",
+    "task": "Напишите цикл for который выводит числа от 1 до 3",
+    "solution": "1\n2\n3",
+    "tests": [
+      { "input": "", "expected": "1\n2\n3" }
+    ]
+  }
+]
